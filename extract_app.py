@@ -4,6 +4,8 @@ import fitz  # PyMuPDF
 import pandas as pd
 import streamlit as st
 import tempfile
+import zipfile
+from io import BytesIO
 
 def extraire_infos_from_text(texte, pdf_name="inconnu.pdf"):
     imputation_matches = re.findall(
@@ -58,24 +60,42 @@ def extraire_infos_from_text(texte, pdf_name="inconnu.pdf"):
 
 # Streamlit app
 st.title("Extraction automatique de bons de commande PDF")
-uploaded_files = st.file_uploader("Upload un ou plusieurs PDF", type="pdf", accept_multiple_files=True)
+zip_file = st.file_uploader("Upload un fichier ZIP contenant des PDF", type="zip")
 
-if uploaded_files:
+if zip_file:
     all_data = []
     with st.spinner("Traitement en cours..."):
-        for uploaded_file in uploaded_files:
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".pdf") as tmp:
-                tmp.write(uploaded_file.read())
-                tmp_path = tmp.name
+        with tempfile.TemporaryDirectory() as tmpdir:
+            zip_path = os.path.join(tmpdir, "uploaded.zip")
+            with open(zip_path, "wb") as f:
+                f.write(zip_file.read())
 
-            doc = fitz.open(tmp_path)
-            texte = "".join([page.get_text() for page in doc])
-            resultats = extraire_infos_from_text(texte, pdf_name=uploaded_file.name)
-            all_data.extend(resultats)
+            with zipfile.ZipFile(zip_path, 'r') as zip_ref:
+                zip_ref.extractall(tmpdir)
+
+            for root, dirs, files in os.walk(tmpdir):
+                for file in files:
+                    if file.lower().endswith(".pdf"):
+                        pdf_path = os.path.join(root, file)
+                        doc = fitz.open(pdf_path)
+                        texte = "".join([page.get_text() for page in doc])
+                        resultats = extraire_infos_from_text(texte, pdf_name=file)
+                        all_data.extend(resultats)
 
         df = pd.DataFrame(all_data)
         st.success("Extraction terminée !")
         st.dataframe(df)
-        st.download_button("Télécharger le CSV", data=df.to_csv(index=False), file_name="resultats_extraction.csv", mime="text/csv")
+
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+            df.to_excel(writer, index=False, sheet_name='Extraction')
+        output.seek(0)
+
+        st.download_button(
+            label="Télécharger le fichier Excel",
+            data=output,
+            file_name="resultats_extraction.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 else:
-    st.info("Chargez un ou plusieurs fichiers PDF pour commencer.")
+    st.info("Chargez un fichier .zip contenant des fichiers PDF.")
