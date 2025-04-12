@@ -17,8 +17,16 @@ def extraire_infos_from_text(texte, pdf_name="inconnu.pdf"):
         match = re.search(p, texte)
         return match.group(1).strip() if match else ""
 
+    # Extraire nom prestataire depuis le nom du fichier
+    nom_prestataire = ""
+    try:
+        nom_prestataire = pdf_name.split("_")[1].split(" - ")[0].strip()
+    except:
+        pass
+
     communs = {
         "pdf": pdf_name,
+        "nom_prestataire": nom_prestataire,
         "commande": cap(r"Bon de commande\s*(\d+)"),
         "date_emission": cap(r"Date d[\u2019']?\u00e9mission\s*[:\-]?[\s\n]*(\d{2}\.\d{2}\.\d{4})"),
         "designation": cap(r"00010\s+(.*?)\s+\d"),
@@ -75,7 +83,7 @@ if zip_file:
 
             for root, dirs, files in os.walk(tmpdir):
                 for file in files:
-                    if file.lower().endswith(".pdf"):
+                    if file.lower().endswith(".pdf") and not file.lower().startswith("preuve_"):
                         pdf_path = os.path.join(root, file)
                         doc = fitz.open(pdf_path)
                         texte = "".join([page.get_text() for page in doc])
